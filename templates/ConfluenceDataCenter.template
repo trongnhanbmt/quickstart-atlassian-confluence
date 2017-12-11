@@ -20,6 +20,9 @@ Metadata:
           default: Networking
         Parameters: [VPC, ExternalSubnets, InternalSubnets, AssociatePublicIpAddress, CidrBlock, KeyName, SSLCertificateName]
       - Label:
+          default: 'Linux Bastion Configuration'
+        Parameters: [BastionInstanceType, BastionAMIOS, BastionBanner, EnableBanner, EnableTCPForwarding, EnableX11Forwarding, NumBastionHosts]
+      - Label:
           default: DNS (Optional)
         Parameters: [HostedZone, SubDomainName]
       - Label:
@@ -30,8 +33,6 @@ Metadata:
         default: Assign public IP
       CatalinaOpts:
         default: Catalina options
-      StartCollectd:
-        default: Start the collectd service
       SynchronyClusterNodeMax:
         default: Maximum number of Synchrony cluster nodes
       SynchronyClusterNodeMin:
@@ -80,6 +81,20 @@ Metadata:
         default: Internal subnets *
       VPC:
         default: VPC *
+      BastionAMIOS:
+        default: Bastion AMI Operating System
+      BastionBanner:
+        default: Bastion Banner
+      BastionInstanceType:
+        default: Bastion Instance Type
+      EnableBanner:
+        default: Enable Banner
+      EnableTCPForwarding:
+        default: Enable TCP Forwarding
+      EnableX11Forwarding:
+        default: Enable X11 Forwarding
+      NumBastionHosts:
+        default: Number of Bastion Hosts
 Parameters:
   AssociatePublicIpAddress:
     AllowedValues: [true, false]
@@ -298,6 +313,67 @@ Parameters:
      ConstraintDescription: Must be the ID of a VPC.
      Description: Virtual Private Cloud
      Type: "AWS::EC2::VPC::Id"
+  BastionAMIOS:
+    AllowedValues:
+    - Amazon-Linux-HVM
+    - CentOS-7-HVM
+    - Ubuntu-Server-14.04-LTS-HVM
+    - Ubuntu-Server-16.04-LTS-HVM
+    Default: Amazon-Linux-HVM
+    Description: The Linux distribution for the AMI to be used for the bastion instances
+    Type: String
+  BastionBanner:
+    Default: https://s3.amazonaws.com/quickstart-reference/linux/bastion/latest/scripts/banner_message.txt
+    Description: Banner text to display upon login
+    Type: String
+  BastionInstanceType:
+    Description: Amazon EC2 instance type for the bastion instances
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.nano
+      - t2.micro
+      - t2.small
+      - t2.medium
+      - t2.large
+      - m3.large
+      - m3.xlarge
+      - m3.2xlarge
+      - m4.large
+      - m4.xlarge
+      - m4.2xlarge
+      - m4.4xlarge
+  EnableBanner:
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Default: 'false'
+    Description: To include a banner to be displayed when connecting via SSH to the bastion, set this parameter to true
+    Type: String
+  EnableTCPForwarding:
+    Type: String
+    Description: Enable/Disable TCP Forwarding
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+  EnableX11Forwarding:
+    Type: String
+    Description: Enable/Disable X11 Forwarding
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+
+  NumBastionHosts:
+    AllowedValues:
+      - '1'
+      - '2'
+      - '3'
+      - '4'
+    Default: '1'
+    Description: Enter the number of bastion hosts to create
+    Type: String
 Conditions:
   DBProvisionedIops:
     !Equals [!Ref DBStorageType, Provisioned IOPS]
@@ -405,46 +481,46 @@ Mappings:
       Arch: HVM64
   AWSRegionArch2AMI:
     ap-northeast-1:
-      HVM64: ami-e16e9587
+      HVM64: ami-75be3813
       HVMG2: NOT_SUPPORTED
     ap-northeast-2:
-      HVM64: ami-f36db59d
+      HVM64: ami-8ab91fe4
       HVMG2: NOT_SUPPORTED
     ap-south-1:
-      HVM64: ami-0d83c762
+      HVM64: ami-63eda40c
       HVMG2: NOT_SUPPORTED
     ap-southeast-1:
-      HVM64: ami-5b660b38
+      HVM64: ami-ceee8ab2
       HVMG2: NOT_SUPPORTED
     ap-southeast-2:
-      HVM64: ami-01c42163
+      HVM64: ami-78af581a
       HVMG2: NOT_SUPPORTED
     ca-central-1:
-      HVM64: ami-56239d32
+      HVM64: ami-0201ba66
       HVMG2: NOT_SUPPORTED
     eu-central-1:
-      HVM64: ami-d5982dba
+      HVM64: ami-c7a32aa8
       HVMG2: NOT_SUPPORTED
     eu-west-1:
-      HVM64: ami-17609a6e
+      HVM64: ami-69ec5410
       HVMG2: NOT_SUPPORTED
     eu-west-2:
-      HVM64: ami-39e7f75d
+      HVM64: ami-56fae432
       HVMG2: NOT_SUPPORTED
     sa-east-1:
-      HVM64: ami-cbb7c4a7
+      HVM64: ami-1fb3f473
       HVMG2: NOT_SUPPORTED
     us-east-1:
-      HVM64: ami-9d9992e6
+      HVM64: ami-6c8ae916
       HVMG2: NOT_SUPPORTED
     us-east-2:
-      HVM64: ami-5bbf9c3e
+      HVM64: ami-edc9e088
       HVMG2: NOT_SUPPORTED
     us-west-1:
-      HVM64: ami-55f3c735
+      HVM64: ami-666e6b06
       HVMG2: NOT_SUPPORTED
     us-west-2:
-      HVM64: ami-c140aab9
+      HVM64: ami-1d76d365
       HVMG2: NOT_SUPPORTED
 Resources:
   ConfluenceClusterNodeRole:
@@ -567,6 +643,7 @@ Resources:
                     - !Sub ["ATL_HAZELCAST_NETWORK_AWS_IAM_REGION=${HazelcastAWSRegion}", HazelcastAWSRegion: !Ref "AWS::Region"]
                     - "ATL_HAZELCAST_NETWORK_AWS_TAG_KEY=Cluster"
                     - !Sub ["ATL_HAZELCAST_NETWORK_AWS_TAG_VALUE=${HazelcastAWSTagValue}", HazelcastAWSTagValue: !Ref "AWS::StackName"]
+                    - !Sub ["ATL_USE_COLLECTD=${UseCollectd}", UseCollectd: !Ref StartCollectd]
             /etc/cfn/cfn-hup.conf:
               content: !Join
                 - "\n"
@@ -785,6 +862,7 @@ Resources:
                     - !Sub ["ATL_HAZELCAST_NETWORK_AWS_IAM_REGION=${HazelcastAWSRegion}", HazelcastAWSRegion: !Ref "AWS::Region"]
                     - "ATL_HAZELCAST_NETWORK_AWS_TAG_KEY=micros_service_id"
                     - !Sub ["ATL_HAZELCAST_NETWORK_AWS_TAG_VALUE=${HazelcastAWSTagValue}", HazelcastAWSTagValue: !Ref "AWS::StackName"]
+                    - !Sub ["ATL_USE_COLLECTD=${UseCollectd}", UseCollectd: !Ref StartCollectd]
             /etc/cfn/cfn-hup.conf:
               content:
                 !Join
